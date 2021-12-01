@@ -13,10 +13,9 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
-const CACHE_PATH: &str = "~/.aoc";
 static TOKEN: Lazy<String> = Lazy::new(|| {
     std::env::var("TOKEN")
-        .or_else(|_| std::fs::read_to_string("tokenfile"))
+        .or_else(|_| std::fs::read_to_string("tokenfile").map(|x| x.trim().to_owned()))
         .expect("set `TOKEN` or create `tokenfile`")
 });
 
@@ -33,10 +32,12 @@ fn fetch_raw(year: usize, day: usize) -> reqwest::Result<String> {
 }
 
 fn cache_init(year: usize) -> std::io::Result<()> {
-    if !Path::new(CACHE_PATH).exists() {
-        std::fs::create_dir(CACHE_PATH)?;
+    let home = std::env::var("HOME").expect("user has home directory");
+    let path = format!("{}/.aoc", home);
+    if !Path::new(&path).exists() {
+        std::fs::create_dir(&path)?;
     }
-    let year_path = format!("{}/{}", CACHE_PATH, year);
+    let year_path = format!("{}/{}", path, year);
     if !Path::new(year_path.as_str()).exists() {
         std::fs::create_dir(year_path)?;
     }
@@ -44,12 +45,14 @@ fn cache_init(year: usize) -> std::io::Result<()> {
 }
 
 fn cache_read(year: usize, day: usize) -> Option<String> {
-    let path = format!("{}/{}/day{:02}.txt", CACHE_PATH, year, day);
+    let home = std::env::var("HOME").expect("user has home directory");
+    let path = format!("{}/.aoc/{}/day{:02}.txt", home, year, day);
     std::fs::read_to_string(path.as_str()).ok()
 }
 
 fn cache_write(year: usize, day: usize, text: &str) -> std::io::Result<()> {
-    let path = format!("{}/{}/day{:02}.txt", CACHE_PATH, year, day);
+    let home = std::env::var("HOME").expect("user has home directory");
+    let path = format!("{}/.aoc/{}/day{:02}.txt", home, year, day);
     std::fs::write(path, text)
 }
 
@@ -59,7 +62,21 @@ pub fn fetch(year: usize, day: usize) -> Result<String, Error> {
     if let Some(text) = cache_read(year, day) {
         return Ok(text);
     }
+
     let text = fetch_raw(year, day)?;
     cache_write(year, day, text.as_str())?;
     Ok(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn downloads_2020_1() {
+        let txt = fetch(2020, 1).unwrap();
+        let home = std::env::var("HOME").expect("user has home directory");
+        let cached = std::fs::read_to_string(format!("{}/.aoc/2020/day01.txt", home)).unwrap();
+        assert_eq!(txt.trim(), cached.trim());
+    }
 }
