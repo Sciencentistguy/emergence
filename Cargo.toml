@@ -1,6 +1,6 @@
 [package]
 name = "emergence"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "A small library to download and cache Advent of Code inputs"
 repository = "https://github.com/Sciencentistguy/emergence"
@@ -10,5 +10,5 @@ license = "MPL-2.0"
 
 [dependencies]
 once_cell = "1.8.0"
-reqwest = { version = "0.11.7", features = ["blocking"] }
+reqwest = { version = "0.11.7", features = ["blocking", "rustls"] }
 thiserror = "1.0.30"
