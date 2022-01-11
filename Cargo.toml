@@ -10,5 +10,5 @@ license = "MPL-2.0"
 
 [dependencies]
 once_cell = "1.9.0"
-reqwest = { version = "0.11.8", features = ["blocking", "rustls"] }
+reqwest = { version = "0.11.9", features = ["blocking", "rustls"] }
 thiserror = "1.0.30"
