@@ -1,8 +1,10 @@
 # Emergence
 
-Emergence is a small library to download and cache Advent of Code inputs, given a user token
+Emergence is a library to fetch and cache Advent of Code inputs.
 
-First, the program looks for the session token in the environment variable `TOKEN`, or, if that is unset, it will look in a file called `tokenfile`.
+The AoC struct is the main entry point for this library.
+
+See `AoC::new` and `AoC::read_or_fetch` for usage
 
 ---
 
