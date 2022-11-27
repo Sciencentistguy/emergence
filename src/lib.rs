@@ -1,71 +1,119 @@
-use std::path::Path;
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use thiserror::Error;
 
-use once_cell::sync::Lazy;
-use reqwest::{blocking::Client, header::COOKIE, Method};
+use reqwest::{blocking::Client, header::COOKIE};
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("{0}")]
+    #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
-    #[error("{0}")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 }
 
-static TOKEN: Lazy<String> = Lazy::new(|| {
-    std::env::var("TOKEN")
-        .or_else(|_| std::fs::read_to_string("tokenfile").map(|x| x.trim().to_owned()))
-        .expect("set `TOKEN` or create `tokenfile`")
-});
-
-fn fetch_raw(year: usize, day: usize) -> reqwest::Result<String> {
-    let client = Client::new();
-    let res = client
-        .request(
-            Method::GET,
-            format!("https://adventofcode.com/{}/day/{}/input", year, day),
-        )
-        .header(COOKIE, format!("session={}", TOKEN.as_str()))
-        .send()?;
-    res.text()
+/// The AoC struct is the main entry point for this library.
+///
+/// See [`AoC::new`] and [`AoC::read_or_fetch`] for usage
+pub struct AoC {
+    path: PathBuf,
+    token: String,
+    year: usize,
+    client: Client,
 }
 
-fn cache_init(year: usize) -> std::io::Result<()> {
-    let home = std::env::var("HOME").expect("user has home directory");
-    let path = format!("{}/.aoc", home);
-    if !Path::new(&path).exists() {
-        std::fs::create_dir(&path)?;
-    }
-    let year_path = format!("{}/{}", path, year);
-    if !Path::new(year_path.as_str()).exists() {
-        std::fs::create_dir(year_path)?;
-    }
-    Ok(())
-}
+impl AoC {
+    /// Constructs a new AoC instance at the specified path with the given token
+    pub fn with_path_and_token(
+        year: usize,
+        path: impl AsRef<Path>,
+        token: String,
+    ) -> Result<Self, Error> {
+        let mut path = path.as_ref().to_owned();
+        path.push(year.to_string());
+        if !path.exists() {
+            std::fs::create_dir_all(&path)?;
+        }
 
-fn cache_read(year: usize, day: usize) -> Option<String> {
-    let home = std::env::var("HOME").expect("user has home directory");
-    let path = format!("{}/.aoc/{}/day{:02}.txt", home, year, day);
-    std::fs::read_to_string(path.as_str()).ok()
-}
-
-fn cache_write(year: usize, day: usize, text: &str) -> std::io::Result<()> {
-    let home = std::env::var("HOME").expect("user has home directory");
-    let path = format!("{}/.aoc/{}/day{:02}.txt", home, year, day);
-    std::fs::write(path, text)
-}
-
-pub fn fetch(year: usize, day: usize) -> Result<String, Error> {
-    cache_init(year)?;
-
-    if let Some(text) = cache_read(year, day) {
-        return Ok(text);
+        Ok(Self {
+            path,
+            year,
+            token,
+            client: Client::new(),
+        })
     }
 
-    let text = fetch_raw(year, day)?;
-    cache_write(year, day, text.as_str())?;
-    Ok(text)
+    /// Constructs a new AoC instance at the specified path, reading the token from `$TOKEN`
+    /// or `./tokenfile`
+    pub fn with_path(year: usize, path: impl AsRef<Path>) -> Result<Self, Error> {
+        let Ok(token) = std::env::var("TOKEN")
+            .or_else(|_| std::fs::read_to_string("tokenfile").map(|x| x.trim().to_owned()))
+            else {
+                panic!("Could not read token from $TOKEN or ./tokenfile. Please set the token in one of these locations or use `AoC::with_path_and_token`");
+            } ;
+
+        Self::with_path_and_token(year, path, token)
+    }
+
+    /// Construct a new AoC instance in the current user's home directory (see [`dirs::home_dir`]),
+    /// reading the token from `$TOKEN` or `./tokenfile`
+    ///
+    /// [`dirs::home_dir`]: https://docs.rs/dirs/4.0.0/dirs/fn.home_dir.html
+    pub fn new(year: usize) -> Result<Self, Error> {
+        let Some(mut path) = dirs::home_dir() else {
+            panic!("Could not determine the home directory of the current user. Please set $HOME or use `AoC::with_path` instead.")
+        };
+
+        path.push(".aoc");
+
+        Self::with_path(year, path)
+    }
+
+    /// Read the input for the specified day from the cache, or if it is not present, fetch it from
+    /// Advent of Code
+    pub fn read_or_fetch(&self, day: usize) -> Result<String, Error> {
+        if let Some(text) = self.read(day)? {
+            return Ok(text);
+        }
+
+        let text = self.fetch(day)?;
+        self.write(day, text.as_str())?;
+        Ok(text)
+    }
+
+    /// Fetch the input for the specified day from Advent of Code
+    fn fetch(&self, day: usize) -> reqwest::Result<String> {
+        let res = self
+            .client
+            .get(format!(
+                "https://adventofcode.com/{}/day/{}/input",
+                self.year, day
+            ))
+            .header(COOKIE, format!("session={}", self.token))
+            .send()?;
+        res.text()
+    }
+
+    /// Read the input for the specified day from the cache
+    fn read(&self, day: usize) -> io::Result<Option<String>> {
+        let mut path = self.path.clone();
+        path.push(".aoc");
+        path.push(self.year.to_string());
+        path.push(format!("day{:02}.txt", day));
+        if !path.exists() {
+            return Ok(None);
+        }
+        std::fs::read_to_string(path).map(Some)
+    }
+
+    /// Read the given text for the specified day to the cache
+    fn write(&self, day: usize, text: &str) -> io::Result<()> {
+        let path = self.path.join(format!("day{day:02}.txt"));
+        std::fs::write(path, text)
+    }
 }
 
 #[cfg(test)]
@@ -73,10 +121,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cache_create() {
+        let dir = tempdir::TempDir::new("emergence").unwrap();
+        let aoc = AoC::with_path(2020, dir.path()).unwrap();
+
+        aoc.write(1, "hello").unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("2020/day01.txt")).unwrap(),
+            "hello"
+        );
+    }
+
+    #[test]
     fn downloads_2020_1() {
-        let txt = fetch(2020, 1).unwrap();
-        let home = std::env::var("HOME").expect("user has home directory");
-        let cached = std::fs::read_to_string(format!("{}/.aoc/2020/day01.txt", home)).unwrap();
-        assert_eq!(txt.trim(), cached.trim());
+        let dir = tempdir::TempDir::new("emergence").unwrap();
+        let aoc = AoC::with_path(2020, dir.path()).unwrap();
+        let input = aoc.fetch(1).unwrap();
+        assert_eq!(input.lines().count(), 200);
     }
 }
