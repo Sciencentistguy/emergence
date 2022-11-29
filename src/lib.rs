@@ -132,12 +132,4 @@ mod tests {
             "hello"
         );
     }
-
-    #[test]
-    fn downloads_2020_1() {
-        let dir = tempdir::TempDir::new("emergence").unwrap();
-        let aoc = AoC::with_path(2020, dir.path()).unwrap();
-        let input = aoc.fetch(1).unwrap();
-        assert_eq!(input.lines().count(), 200);
-    }
 }
