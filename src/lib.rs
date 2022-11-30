@@ -93,7 +93,8 @@ impl AoC {
                 self.year, day
             ))
             .header(COOKIE, format!("session={}", self.token))
-            .send()?;
+            .send()?
+            .error_for_status()?;
         res.text()
     }
 
