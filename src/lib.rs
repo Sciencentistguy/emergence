@@ -32,10 +32,9 @@ impl AoC {
         path: impl AsRef<Path>,
         token: String,
     ) -> Result<Self, Error> {
-        let path = path.as_ref().to_owned();
-        std::fs::create_dir_all(path.join(year.to_string()))?;
+        std::fs::create_dir_all(path.as_ref().join(year.to_string()))?;
         Ok(Self {
-            path,
+            path: path.as_ref().to_owned(),
             year,
             token,
             client: Client::new(),
@@ -49,7 +48,7 @@ impl AoC {
             .or_else(|_| std::fs::read_to_string("tokenfile").map(|x| x.trim().to_owned()))
             else {
                 panic!("Could not read token from $TOKEN or ./tokenfile. Please set the token in one of these locations or use `AoC::with_path_and_token`");
-            } ;
+            };
 
         Self::with_path_and_token(year, path, token)
     }
@@ -108,7 +107,7 @@ impl AoC {
         std::fs::write(self.loc(day), text)
     }
 
-    /// Where would we cache the text for a given day.
+    /// The location of the cached input (or where it would be cached) for the specified day
     fn loc(&self, day: usize) -> PathBuf {
         let mut path = self.path.clone();
         path.push(self.year.to_string());
