@@ -32,12 +32,8 @@ impl AoC {
         path: impl AsRef<Path>,
         token: String,
     ) -> Result<Self, Error> {
-        let mut path = path.as_ref().to_owned();
-        path.push(year.to_string());
-        if !path.exists() {
-            std::fs::create_dir_all(&path)?;
-        }
-
+        let path = path.as_ref().to_owned();
+        std::fs::create_dir_all(path.join(year.to_string()))?;
         Ok(Self {
             path,
             year,
@@ -99,10 +95,7 @@ impl AoC {
 
     /// Read the input for the specified day from the cache
     fn read(&self, day: usize) -> io::Result<Option<String>> {
-        let mut path = self.path.clone();
-        path.push(".aoc");
-        path.push(self.year.to_string());
-        path.push(format!("day{:02}.txt", day));
+        let path = self.loc(day);
         if !path.exists() {
             return Ok(None);
         }
@@ -111,8 +104,15 @@ impl AoC {
 
     /// Read the given text for the specified day to the cache
     fn write(&self, day: usize, text: &str) -> io::Result<()> {
-        let path = self.path.join(format!("day{day:02}.txt"));
-        std::fs::write(path, text)
+        std::fs::write(self.loc(day), text)
+    }
+
+    /// Where would we cache the text for a given day.
+    fn loc(&self, day: usize) -> PathBuf {
+        let mut path = self.path.clone();
+        path.push(self.year.to_string());
+        path.push(format!("day{:02}.txt", day));
+        path
     }
 }
 
@@ -131,5 +131,14 @@ mod tests {
             std::fs::read_to_string(dir.path().join("2020/day01.txt")).unwrap(),
             "hello"
         );
+    }
+
+    #[test]
+    fn cache_hit() {
+        let dir = tempdir::TempDir::new("emergence").unwrap();
+        let aoc = AoC::with_path(2020, dir.path()).unwrap();
+        aoc.write(1, "hello").unwrap();
+        assert_eq!(aoc.read(1).unwrap().unwrap(), "hello");
+        assert!(aoc.read(2).unwrap().is_none());
     }
 }
