@@ -5,7 +5,7 @@ use std::{
 
 use thiserror::Error;
 
-use reqwest::{blocking::Client, header::COOKIE};
+use reqwest::{blocking::Client, header::{COOKIE, USER_AGENT}};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -88,6 +88,7 @@ impl AoC {
                 self.year, day
             ))
             .header(COOKIE, format!("session={}", self.token))
+            .header(USER_AGENT, "github.com/Sciencentistguy/emergence by jamie@quigley.xyz")
             .send()?
             .error_for_status()?;
         res.text()
