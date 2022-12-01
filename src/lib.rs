@@ -14,10 +14,6 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    #[error("The puzzle has not been released yet. Be patient.")]
-    TooSoon,
-    #[error("That's a silly date.")]
-    InvalidDate,
 }
 
 /// The AoC struct is the main entry point for this library.
@@ -32,6 +28,12 @@ pub struct AoC {
 
 impl AoC {
     /// Constructs a new AoC instance at the specified path with the given token
+    ///
+    /// # Panics
+    ///
+    /// Will panic if:
+    /// - `year` is more than 3000 (if this is a problem for you, please open an issue. I'm
+    /// impressed Advent of Code is still going tbh)
     pub fn with_path_and_token(
         year: usize,
         path: impl AsRef<Path>,
@@ -48,6 +50,12 @@ impl AoC {
 
     /// Constructs a new AoC instance at the specified path, reading the token from `$TOKEN`
     /// or `./tokenfile`
+    ///
+    /// # Panics
+    ///
+    /// Will panic if:
+    /// - `year` is more than 3000 (if this is a problem for you, please open an issue. I'm
+    /// impressed Advent of Code is still going tbh)
     pub fn with_path(year: usize, path: impl AsRef<Path>) -> Result<Self, Error> {
         let Ok(token) = std::env::var("TOKEN")
             .or_else(|_| std::fs::read_to_string("tokenfile").map(|x| x.trim().to_owned()))
@@ -62,6 +70,12 @@ impl AoC {
     /// reading the token from `$TOKEN` or `./tokenfile`
     ///
     /// [`dirs::home_dir`]: https://docs.rs/dirs/4.0.0/dirs/fn.home_dir.html
+    ///
+    /// # Panics
+    ///
+    /// Will panic if:
+    /// - `year` is more than 3000 (if this is a problem for you, please open an issue. I'm
+    /// impressed Advent of Code is still going tbh)
     pub fn new(year: usize) -> Result<Self, Error> {
         let Some(mut path) = dirs::home_dir() else {
             panic!("Could not determine the home directory of the current user. Please set $HOME or use `AoC::with_path` instead.")
@@ -74,7 +88,21 @@ impl AoC {
 
     /// Read the input for the specified day from the cache, or if it is not present, fetch it from
     /// Advent of Code
+    ///
+    /// # Panics
+    ///
+    /// Will panic if:
+    /// - `day` is 0
+    /// - `day` is more than 25
+    /// - The puzzle for `day` has not been released yet
     pub fn read_or_fetch(&self, day: usize) -> Result<String, Error> {
+        if day == 0 {
+            panic!("The first puzzle is day 01. Not fetch day 00.");
+        }
+        if day > 25 {
+            panic!("There are only 25 days in Advent of Code. Not fetching day {day:02}.");
+        }
+
         if let Some(text) = self.read(day)? {
             return Ok(text);
         }
@@ -86,21 +114,16 @@ impl AoC {
 
     /// Fetch the input for the specified day from Advent of Code
     fn fetch(&self, day: usize) -> Result<String, Error> {
-        let starts = DateTime::<FixedOffset>::from_local(
+        let starts = DateTime::<FixedOffset>::from_utc(
             NaiveDateTime::new(
-                NaiveDate::from_ymd_opt(
-                    self.year.try_into().map_err(|_| Error::TooSoon)?,
-                    12,
-                    day.try_into().map_err(|_| Error::InvalidDate)?,
-                )
-                .ok_or(Error::InvalidDate)?,
+                NaiveDate::from_ymd_opt(self.year as _, 12, day as _).unwrap(),
                 NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             ),
-            FixedOffset::west_opt(5 * 3600).unwrap(),
+            FixedOffset::west_opt(5 * 60 * 60).unwrap(),
         );
 
         if starts > Utc::now() {
-            return Err(Error::TooSoon);
+            panic!("Not fetching puzzle for day {day:02}, as it has not been released yet.",);
         }
 
         let res = self
@@ -140,11 +163,13 @@ impl AoC {
 
 #[cfg(test)]
 mod tests {
+    use tempdir::TempDir;
+
     use super::*;
 
     #[test]
     fn cache_create() {
-        let dir = tempdir::TempDir::new("emergence").unwrap();
+        let dir = TempDir::new("emergence").unwrap();
         let aoc = AoC::with_path(2020, dir.path()).unwrap();
 
         aoc.write(1, "hello").unwrap();
@@ -157,7 +182,7 @@ mod tests {
 
     #[test]
     fn cache_hit() {
-        let dir = tempdir::TempDir::new("emergence").unwrap();
+        let dir = TempDir::new("emergence").unwrap();
         let aoc = AoC::with_path(2020, dir.path()).unwrap();
         aoc.write(1, "hello").unwrap();
         assert_eq!(aoc.read(1).unwrap().unwrap(), "hello");
@@ -165,21 +190,25 @@ mod tests {
     }
 
     #[test]
-    fn impatient() {
-        let dir = tempdir::TempDir::new("emergence").unwrap();
+    #[should_panic]
+    fn future() {
+        let dir = TempDir::new("emergence").unwrap();
         let aoc = AoC::with_path(100_000, dir.path()).unwrap();
-        assert!(matches!(aoc.read_or_fetch(1), Err(Error::TooSoon)));
+        let _ = aoc.read_or_fetch(1);
     }
 
     #[test]
-    fn invalid_date() {
-        let dir = tempdir::TempDir::new("emergence").unwrap();
+    #[should_panic]
+    fn day00() {
+        let dir = TempDir::new("emergence").unwrap();
         let aoc = AoC::with_path(2020, dir.path()).unwrap();
-        assert!(matches!(aoc.read_or_fetch(0), Err(Error::InvalidDate)));
-        assert!(matches!(aoc.read_or_fetch(1000), Err(Error::InvalidDate)));
-        assert!(matches!(
-            aoc.read_or_fetch(usize::max_value()),
-            Err(Error::InvalidDate)
-        ));
+        let _ = aoc.read_or_fetch(0);
+    }
+    #[test]
+    #[should_panic]
+    fn day31() {
+        let dir = TempDir::new("emergence").unwrap();
+        let aoc = AoC::with_path(2020, dir.path()).unwrap();
+        let _ = aoc.read_or_fetch(31);
     }
 }
