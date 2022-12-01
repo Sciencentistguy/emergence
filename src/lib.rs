@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use thiserror::Error;
 
 use reqwest::{blocking::Client, header::COOKIE};
@@ -13,6 +14,10 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error("The puzzle has not been released yet. Be patient.")]
+    TooSoon,
+    #[error("That's a silly date.")]
+    InvalidDate,
 }
 
 /// The AoC struct is the main entry point for this library.
@@ -80,7 +85,24 @@ impl AoC {
     }
 
     /// Fetch the input for the specified day from Advent of Code
-    fn fetch(&self, day: usize) -> reqwest::Result<String> {
+    fn fetch(&self, day: usize) -> Result<String, Error> {
+        let starts = DateTime::<FixedOffset>::from_local(
+            NaiveDateTime::new(
+                NaiveDate::from_ymd_opt(
+                    self.year.try_into().map_err(|_| Error::TooSoon)?,
+                    12,
+                    day.try_into().map_err(|_| Error::InvalidDate)?,
+                )
+                .ok_or(Error::InvalidDate)?,
+                NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+            ),
+            FixedOffset::west_opt(5 * 3600).unwrap(),
+        );
+
+        if starts > Utc::now() {
+            return Err(Error::TooSoon);
+        }
+
         let res = self
             .client
             .get(format!(
@@ -90,7 +112,7 @@ impl AoC {
             .header(COOKIE, format!("session={}", self.token))
             .send()?
             .error_for_status()?;
-        res.text()
+        Ok(res.text()?)
     }
 
     /// Read the input for the specified day from the cache
@@ -140,5 +162,24 @@ mod tests {
         aoc.write(1, "hello").unwrap();
         assert_eq!(aoc.read(1).unwrap().unwrap(), "hello");
         assert!(aoc.read(2).unwrap().is_none());
+    }
+
+    #[test]
+    fn impatient() {
+        let dir = tempdir::TempDir::new("emergence").unwrap();
+        let aoc = AoC::with_path(100_000, dir.path()).unwrap();
+        assert!(matches!(aoc.read_or_fetch(1), Err(Error::TooSoon)));
+    }
+
+    #[test]
+    fn invalid_date() {
+        let dir = tempdir::TempDir::new("emergence").unwrap();
+        let aoc = AoC::with_path(2020, dir.path()).unwrap();
+        assert!(matches!(aoc.read_or_fetch(0), Err(Error::InvalidDate)));
+        assert!(matches!(aoc.read_or_fetch(1000), Err(Error::InvalidDate)));
+        assert!(matches!(
+            aoc.read_or_fetch(usize::max_value()),
+            Err(Error::InvalidDate)
+        ));
     }
 }
