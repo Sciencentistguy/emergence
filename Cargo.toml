@@ -1,6 +1,6 @@
 [package]
 name = "emergence"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 description = "A small library to download and cache Advent of Code inputs"
 repository = "https://github.com/Sciencentistguy/emergence"
