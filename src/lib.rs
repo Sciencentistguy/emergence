@@ -1,4 +1,3 @@
-//! Emergenv
 //! Emergence is a library to fetch and cache Advent of Code inputs.
 //! 
 //! The [`AoC`] struct is the main entry point for this library.
