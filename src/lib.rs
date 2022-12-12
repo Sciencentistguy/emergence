@@ -1,10 +1,10 @@
 //! Emergence is a library to fetch and cache Advent of Code inputs.
-//! 
+//!
 //! The [`AoC`] struct is the main entry point for this library.
-//! 
+//!
 //! See [`AoC::new`] and [`AoC::read_or_fetch`] for usage
 //!
-//! # Example 
+//! # Example
 //!
 //! ```
 //! # use emergence::AoC;
@@ -17,15 +17,21 @@
 //!     Ok(())
 //! }
 //! ```
+
 use std::{
     io,
     path::{Path, PathBuf},
 };
 
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use thiserror::Error;
 
-use reqwest::{blocking::Client, header::{COOKIE, USER_AGENT}};
+#[cfg(not(miri))]
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+#[cfg(not(miri))]
+use reqwest::{
+    blocking::Client,
+    header::{COOKIE, USER_AGENT},
+};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -42,6 +48,8 @@ pub struct AoC {
     path: PathBuf,
     token: String,
     year: usize,
+
+    #[cfg(not(miri))]
     client: Client,
 }
 
@@ -63,6 +71,8 @@ impl AoC {
             path: path.as_ref().to_owned(),
             year,
             token,
+
+            #[cfg(not(miri))]
             client: Client::new(),
         })
     }
@@ -95,6 +105,7 @@ impl AoC {
     /// Will panic if:
     /// - `year` is more than 3000 (if this is a problem for you, please open an issue. I'm
     /// impressed Advent of Code is still going tbh)
+    #[cfg(not(miri))]
     pub fn new(year: usize) -> Result<Self, Error> {
         let Some(mut path) = dirs::home_dir() else {
             panic!("Could not determine the home directory of the current user. Please set $HOME or use `AoC::with_path` instead.")
@@ -103,6 +114,13 @@ impl AoC {
         path.push(".aoc");
 
         Self::with_path(year, path)
+    }
+
+    #[cfg(miri)]
+    pub fn new(year: usize) -> Result<Self, Error> {
+        panic!(
+            "When running under miri, you must use `AoC::with_path` or `AoC::with_path_and_token`, as it is impossible to discover the user's home directory."
+        );
     }
 
     /// Read the input for the specified day from the cache, or if it is not present, fetch it from
@@ -126,12 +144,22 @@ impl AoC {
             return Ok(text);
         }
 
-        let text = self.fetch(day)?;
-        self.write(day, text.as_str())?;
-        Ok(text)
+        #[cfg(miri)]
+        {
+            eprintln!("Cannot fetch input under miri, and it is not present in the cache. Exiting");
+            std::process::exit(1);
+        }
+
+        #[cfg(not(miri))]
+        {
+            let text = self.fetch(day)?;
+            self.write(day, text.as_str())?;
+            Ok(text)
+        }
     }
 
     /// Fetch the input for the specified day from Advent of Code
+    #[cfg(not(miri))]
     fn fetch(&self, day: usize) -> Result<String, Error> {
         let starts = DateTime::<FixedOffset>::from_utc(
             NaiveDateTime::new(
@@ -152,7 +180,10 @@ impl AoC {
                 self.year, day
             ))
             .header(COOKIE, format!("session={}", self.token))
-            .header(USER_AGENT, "github.com/Sciencentistguy/emergence by jamie@quigley.xyz")
+            .header(
+                USER_AGENT,
+                "github.com/Sciencentistguy/emergence by jamie@quigley.xyz",
+            )
             .send()?
             .error_for_status()?;
         Ok(res.text()?)
