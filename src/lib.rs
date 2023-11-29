@@ -39,6 +39,12 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error("Refusing to fetch input for day {0}, as it has not yet been released")]
+    NotYetReleased(usize),
+    #[error("Advent of Code problems are 1-indexed, day 0 does not exist")]
+    DayZero,
+    #[error("Advent of Code stops after the 25th")]
+    OutOfBounds,
 }
 
 /// The AoC struct is the main entry point for this library.
@@ -66,6 +72,7 @@ impl AoC {
         path: impl AsRef<Path>,
         token: String,
     ) -> Result<Self, Error> {
+        assert!(year < 3000, "Year must be less than 3000");
         std::fs::create_dir_all(path.as_ref().join(year.to_string()))?;
         Ok(Self {
             path: path.as_ref().to_owned(),
@@ -88,9 +95,9 @@ impl AoC {
     pub fn with_path(year: usize, path: impl AsRef<Path>) -> Result<Self, Error> {
         let Ok(token) = std::env::var("TOKEN")
             .or_else(|_| std::fs::read_to_string("tokenfile").map(|x| x.trim().to_owned()))
-            else {
-                panic!("Could not read token from $TOKEN or ./tokenfile. Please set the token in one of these locations or use `AoC::with_path_and_token`");
-            };
+        else {
+            panic!("Could not read token from $TOKEN or ./tokenfile. Please set the token in one of these locations or use `AoC::with_path_and_token`");
+        };
 
         Self::with_path_and_token(year, path, token)
     }
@@ -134,10 +141,10 @@ impl AoC {
     /// - The puzzle for `day` has not been released yet
     pub fn read_or_fetch(&self, day: usize) -> Result<String, Error> {
         if day == 0 {
-            panic!("The first puzzle is day 01. Not fetch day 00.");
+            return Err(Error::DayZero);
         }
         if day > 25 {
-            panic!("There are only 25 days in Advent of Code. Not fetching day {day:02}.");
+            return Err(Error::OutOfBounds);
         }
 
         if let Some(text) = self.read(day)? {
@@ -161,7 +168,7 @@ impl AoC {
     /// Fetch the input for the specified day from Advent of Code
     #[cfg(not(miri))]
     fn fetch(&self, day: usize) -> Result<String, Error> {
-        let starts = DateTime::<FixedOffset>::from_utc(
+        let starts = DateTime::<FixedOffset>::from_naive_utc_and_offset(
             NaiveDateTime::new(
                 NaiveDate::from_ymd_opt(self.year as _, 12, day as _).unwrap(),
                 NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
@@ -170,7 +177,7 @@ impl AoC {
         );
 
         if starts > Utc::now() {
-            panic!("Not fetching puzzle for day {day:02}, as it has not been released yet.",);
+            return Err(Error::NotYetReleased(day));
         }
 
         let res = self
@@ -241,25 +248,30 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn future() {
+    fn cache_miss() {
         let dir = TempDir::new("emergence").unwrap();
-        let aoc = AoC::with_path(100_000, dir.path()).unwrap();
-        let _ = aoc.read_or_fetch(1);
+        let aoc = AoC::with_path(2020, dir.path()).unwrap();
+        assert!(aoc.read(1).unwrap().is_none());
+        assert_ne!(aoc.fetch(1).unwrap().len(), 0);
     }
 
     #[test]
     #[should_panic]
+    fn future() {
+        let dir = TempDir::new("emergence").unwrap();
+        let _aoc = AoC::with_path(100_000, dir.path()).unwrap();
+    }
+
+    #[test]
     fn day00() {
         let dir = TempDir::new("emergence").unwrap();
         let aoc = AoC::with_path(2020, dir.path()).unwrap();
-        let _ = aoc.read_or_fetch(0);
+        assert!(matches!(aoc.read_or_fetch(0), Err(Error::DayZero)));
     }
     #[test]
-    #[should_panic]
     fn day31() {
         let dir = TempDir::new("emergence").unwrap();
         let aoc = AoC::with_path(2020, dir.path()).unwrap();
-        let _ = aoc.read_or_fetch(31);
+        assert!(matches!(aoc.read_or_fetch(31), Err(Error::OutOfBounds)));
     }
 }
