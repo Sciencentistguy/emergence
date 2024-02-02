@@ -23,6 +23,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use tap::TapOptional;
 use thiserror::Error;
 
 #[cfg(not(miri))]
@@ -84,6 +85,19 @@ impl AoC {
         })
     }
 
+    /// Find a `./tokenfile` in the current directory, or search upwards recursively
+    fn find_tokenfile() -> Result<Option<PathBuf>, Error> {
+        let mut path = std::env::current_dir()?;
+        while {
+            let tokenpath = path.join("tokenfile");
+            if tokenpath.is_file() {
+                return Ok(Some(tokenpath));
+            }
+            path.pop()
+        } {}
+        Ok(None)
+    }
+
     /// Constructs a new AoC instance at the specified path, reading the token from `$TOKEN`
     /// or `./tokenfile`
     ///
@@ -93,10 +107,14 @@ impl AoC {
     /// - `year` is more than 3000 (if this is a problem for you, please open an issue. I'm
     /// impressed Advent of Code is still going tbh)
     pub fn with_path(year: usize, path: impl AsRef<Path>) -> Result<Self, Error> {
-        let Ok(token) = std::env::var("TOKEN")
-            .or_else(|_| std::fs::read_to_string("tokenfile").map(|x| x.trim().to_owned()))
-        else {
-            panic!("Could not read token from $TOKEN or ./tokenfile. Please set the token in one of these locations or use `AoC::with_path_and_token`");
+        let tokenpath = Self::find_tokenfile()?;
+
+        let Some(token) = std::env::var("TOKEN").ok().or_else(|| {
+            tokenpath
+                .and_then(|tokenpath| std::fs::read_to_string(tokenpath).ok())
+                .tap_some_mut(|s| s.truncate(s.trim_end().len()))
+        }) else {
+            panic!("Could not read token from $TOKEN or find a ./tokenfile in this directory or any parent. Please set the token in one of these locations or use `AoC::with_path_and_token`");
         };
 
         Self::with_path_and_token(year, path, token)
@@ -273,5 +291,26 @@ mod tests {
         let dir = TempDir::new("emergence").unwrap();
         let aoc = AoC::with_path(2020, dir.path()).unwrap();
         assert!(matches!(aoc.read_or_fetch(31), Err(Error::OutOfBounds)));
+    }
+
+    #[test]
+    fn finds_tokenfile() {
+        let cwd = std::env::current_dir().unwrap();
+
+        let dir = TempDir::new("emergence").unwrap();
+        let mut dir = dir.path().to_owned();
+        std::env::set_current_dir(&dir).unwrap();
+
+        std::fs::write(dir.join("tokenfile"), "TESTTOKEN").unwrap();
+        assert!(AoC::find_tokenfile().unwrap().is_some());
+
+        dir.push("a");
+        dir.push("b");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        assert!(AoC::find_tokenfile().unwrap().is_some());
+
+        std::env::set_current_dir(cwd).unwrap();
     }
 }
