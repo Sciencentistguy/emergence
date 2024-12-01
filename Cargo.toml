@@ -1,7 +1,7 @@
 [package]
 name = "emergence"
-version = "2.0.0"
-edition = "2021"
+version = "2.0.1"
+edition = "2024"
 description = "A small library to download and cache Advent of Code inputs"
 repository = "https://github.com/Sciencentistguy/emergence"
 license = "MPL-2.0"

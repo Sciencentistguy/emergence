@@ -62,12 +62,6 @@ pub struct AoC {
 
 impl AoC {
     /// Constructs a new AoC instance at the specified path with the given token
-    ///
-    /// # Panics
-    ///
-    /// Will panic if:
-    /// - `year` is more than 3000 (if this is a problem for you, please open an issue. I'm
-    /// impressed Advent of Code is still going tbh)
     pub fn with_path_and_token(
         year: usize,
         path: impl AsRef<Path>,
@@ -100,12 +94,6 @@ impl AoC {
 
     /// Constructs a new AoC instance at the specified path, reading the token from `$TOKEN`
     /// or `./tokenfile`
-    ///
-    /// # Panics
-    ///
-    /// Will panic if:
-    /// - `year` is more than 3000 (if this is a problem for you, please open an issue. I'm
-    /// impressed Advent of Code is still going tbh)
     pub fn with_path(year: usize, path: impl AsRef<Path>) -> Result<Self, Error> {
         let tokenpath = Self::find_tokenfile()?;
 
@@ -144,7 +132,7 @@ impl AoC {
     #[cfg(miri)]
     pub fn new(year: usize) -> Result<Self, Error> {
         panic!(
-            "When running under miri, you must use `AoC::with_path` or `AoC::with_path_and_token`, as it is impossible to discover the user's home directory."
+            "When running under miri, `AoC::new` is unavailable. You must use `AoC::with_path` or `AoC::with_path_and_token`, as it is impossible to discover the user's home directory."
         );
     }
 
@@ -154,9 +142,8 @@ impl AoC {
     /// # Panics
     ///
     /// Will panic if:
-    /// - `day` is 0
-    /// - `day` is more than 25
     /// - The puzzle for `day` has not been released yet
+    /// - We are running under miri, and the input is not present in the cache
     pub fn read_or_fetch(&self, day: usize) -> Result<String, Error> {
         if day == 0 {
             return Err(Error::DayZero);
@@ -171,8 +158,7 @@ impl AoC {
 
         #[cfg(miri)]
         {
-            eprintln!("Cannot fetch input under miri, and it is not present in the cache. Exiting");
-            std::process::exit(1);
+            panic!("Cannot fetch input under miri, and it is not present in the cache");
         }
 
         #[cfg(not(miri))]
